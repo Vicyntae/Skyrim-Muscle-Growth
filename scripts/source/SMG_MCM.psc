@@ -1,4 +1,4 @@
-scriptName SMG_MCM Extends ski_configbase
+ScriptName SMG_MCM Extends ski_configbase
 
 ;*******************************************************************************
 ;Properties
@@ -14,6 +14,8 @@ String DefaultSkillProfileName
 Actor Property PlayerRef Auto
 SMG_LayerBase[] Property Layers Auto
 Int Property CurrentLayerIndex Auto
+
+GlobalVariable Property SMG_Enable Auto
 
 ;When layers are updated every day
 Float Property DailyUpdateTime = 0.0 Auto
@@ -31,6 +33,8 @@ Int Property NumMorphPages Auto
 ;Mod installation variables
 Bool Property NiOverride_Installed = false Auto
 Bool Property PapyrusUtil_Installed = false Auto
+
+Actor[] Property TrackedActors Auto
 
 ;/
 0 = OneHanded
@@ -81,8 +85,6 @@ string[] InterpOptions
 3 = "Ease In/Out Cubic"
 /;
 
-Float DEBUG_PlayerStrengthSet = 0.0
-
 String MorphTypeFilter = ""
 String[] FilterOptionsType
 String MorphSexFilter = ""
@@ -90,6 +92,14 @@ String[] FilterOptionsSex
 ;*******************************************************************************
 ;Functions
 ;*******************************************************************************
+Function AddTrackedActor(Actor new_actor)
+  PapyrusUtil.PushActor(TrackedActors, new_actor)
+EndFunction
+
+Function RemoveTrackedActor(Actor remove_actor)
+  PapyrusUtil.RemoveActor(TrackedActors, remove_actor)
+EndFunction
+
 Bool Function SaveSkillProfile(String ProfileName, Int LayerIndex)
   JsonUtil.ClearAll(SMG_Folder_Skills + ProfileName)
   JsonUtil.StringListCopy(SMG_Folder_Skills + ProfileName, "STRUCT_SkillInfo", Layers[LayerIndex].STRUCT_SkillInfo)
@@ -293,11 +303,24 @@ String[] Function GetMorphOptionListing(Int Option)
   Return StringUtil.Split(optionID, "_")
 EndFunction
 
+Function UpdateAllActors()
+  int handle = ModEvent.Create("SMG_AllActorsUpdated")
+  If (handle)
+    ModEvent.Send(handle)
+  EndIf
+EndFunction
 
-
+Function RemoveMorphs(String MorphString, String MorphType)
+  int handle = ModEvent.Create("SMG_MorphRemoved")
+  if (handle)
+    ModEvent.PushString(handle, MorphString)
+    ModEvent.PushString(handle, MorphType)
+    ModEvent.Send(handle)
+  EndIf
+EndFunction
 
 Function UpdateAllLayerMorphs(Actor TargetActor)
-  Debug.Notification("Updating player morphs.")
+  ;Debug.Notification("Updating player morphs.")
   Int IsFemale = TargetActor.GetActorBase().GetSex()
     String Sex
   If IsFemale == 0
@@ -327,7 +350,7 @@ Function UpdateAllLayerMorphs(Actor TargetActor)
       If (MorphStruct[1] as Int) as Bool
         String MorphType = MorphStruct[3]
         Float InterpValue = Layer.InterpolateValue(LayerValue, MorphStruct[4] as Float, MorphStruct[5] as Float, MorphStruct[6] as Int)
-        Debug.Notification("Applying Morph " + MorphStruct[0] + ", Value == " + InterpValue)
+        ;Debug.Notification("Applying Morph " + MorphStruct[0] + ", Value == " + InterpValue)
         If MorphType == "$SMGBodyMorphs"
           Int FoundIndex = BodyMorphStringCache.Find(MorphStruct[0])
           If FoundIndex >= 0
@@ -398,7 +421,7 @@ Function ApplyBoneMorphs(Actor TargetActor, String[] MorphStrings, Float[] Morph
 EndFunction
 
 Function ApplySpecialMorphs(Actor TargetActor, String[] MorphStrings, Float[] MorphValues)
-  Debug.Notification("Applying Body Morphs. Length == " + MorphStrings.Length)
+  ;Debug.Notification("Applying Body Morphs. Length == " + MorphStrings.Length)
   Int i = 0
   Int IsFemale = TargetActor.GetActorBase().GetSex()
   While i < MorphStrings.Length
@@ -416,7 +439,7 @@ Function ApplySpecialMorphs(Actor TargetActor, String[] MorphStrings, Float[] Mo
         If MorphValue <= 0
           MorphValue = 0.01
         EndIf
-        Debug.Notification("Height == " + MorphValue)
+        ;Debug.Notification("Height == " + MorphValue)
         ;Debug.Notification("Updating Height, value = " + InterpValue)
         NiOverride.AddNodeTransformScale(TargetActor, false, IsFemale, "NPC Root [Root]", "SkyrimMuscleGrowth.esp", MorphValue)
         NiOverride.AddNodeTransformScale(TargetActor, True, IsFemale, "NPC Root [Root]", "SkyrimMuscleGrowth.esp", MorphValue)
@@ -541,23 +564,29 @@ Event OnGameReload()
     PapyrusUtil_Installed = true
   EndIf
 
+  SMG_Enable.SetValue(0 as float)
+  Utility.Wait(2.0)
+  SMG_Enable.SetValue(1 as float)
 EndEvent
 
 Event OnMenuOpen(String MenuName)
   If MenuName == "Sleep/Wait Menu"
-    UpdateAllLayerMorphs(PlayerRef)
+    UpdateAllActors()
+    ;UpdateAllLayerMorphs(PlayerRef)
     RegisterSpecificTimeUpdate(DailyUpdateTime)
   EndIf
 EndEvent
 
 Event OnSleepStop(bool abInterrupted)
-  UpdateAllLayerMorphs(PlayerRef)
+  UpdateAllActors()
+  ;UpdateAllLayerMorphs(PlayerRef)
   RegisterSpecificTimeUpdate(DailyUpdateTime)
 EndEvent
 
 Event OnUpdateGameTime()
   ;Debug.Notification("Updating player strength. New strength = " + UpdateStrength())
-  UpdateAllLayerMorphs(PlayerRef)
+  UpdateAllActors()
+  ;UpdateAllLayerMorphs(PlayerRef)
   RegisterSpecificTimeUpdate(DailyUpdateTime)
 EndEvent
 
@@ -581,27 +610,28 @@ event OnPageReset(string page)
     ;AddSliderOptionST("DEBUG_SET_STRENGTH", "Set Player Strength", PlayerLastStrength, "{1}")
   ElseIf page == "$SMGLayerActions"
     SetCursorFillMode(LEFT_TO_RIGHT)
+    SMG_LayerBase Layer = Layers[CurrentLayerIndex]
 
-    AddMenuOptionST("SELECT_LAYER", "$SMGSelectLayer", Layers[CurrentLayerIndex].LayerName)
+    AddMenuOptionST("SELECT_LAYER", "$SMGSelectLayer", Layer.LayerName)
     AddInputOptionST("RENAME_LAYER", "$SMGRenameLayer", "")
-    AddTextOptionST("LAST_LAYER_VALUE", "$SMGLastLayerValue", Layers[CurrentLayerIndex].PlayerLastValue)
+    AddTextOptionST("LAST_LAYER_VALUE", "$SMGLastLayerValue", Layer.PlayerLastValue)
     AddEmptyOption()
     AddEmptyOption()
     AddEmptyOption()
-    AddSliderOptionST("LAYER_SKILL_CEILING", "$SMGLayerSkillCeiling", Layers[CurrentLayerIndex].SkillCeiling, "{0}")
-    AddSliderOptionST("LAYER_BASE_STAT_CEILING", "$SMGLayerBaseStatCeiling", Layers[CurrentLayerIndex].BaseStatCeiling, "{0}")
-    AddSliderOptionST("LAYER_LEVEL_CEILING", "$SMGLayerLevelCeiling", Layers[CurrentLayerIndex].LevelCeiling, "{0}")
+    AddSliderOptionST("LAYER_SKILL_CEILING", "$SMGLayerSkillCeiling", Layer.SkillCeiling, "{0}")
+    AddSliderOptionST("LAYER_BASE_STAT_CEILING", "$SMGLayerBaseStatCeiling", Layer.BaseStatCeiling, "{0}")
+    AddSliderOptionST("LAYER_LEVEL_CEILING", "$SMGLayerLevelCeiling", Layer.LevelCeiling, "{0}")
     AddEmptyOption()
     AddEmptyOption()
     AddEmptyOption()
     AddTextOptionST("RESTORE_DEFAULT_PROFILE_M", "$SMGRestoreDefaultProfileM", "")
-    AddInputOptionST("ADD_MORPH_M", "$SMGAddMorphM", Layers[CurrentLayerIndex].STRUCT_MorphInfo.Length)
+    AddInputOptionST("ADD_MORPH_M", "$SMGAddMorphM", Layer.STRUCT_MorphInfo.Length)
     AddMenuOptionST("SELECT_LOADED_PROFILE_M", "$SMGSelectProfileM", "")
     AddInputOptionST("SAVE_LOADED_PROFILE_M", "$SMGSaveMorphProfileM", "")
     AddEmptyOption()
     AddEmptyOption()
     AddTextOptionST("RESTORE_DEFAULT_PROFILE_F", "$SMGRestoreDefaultProfileF", "")
-    AddInputOptionST("ADD_MORPH_F", "$SMGAddMorphF", Layers[CurrentLayerIndex].STRUCT_MorphInfo.Length)
+    AddInputOptionST("ADD_MORPH_F", "$SMGAddMorphF", Layer.STRUCT_MorphInfo.Length)
     AddMenuOptionST("SELECT_LOADED_PROFILE_F", "$SMGSelectProfileF", "")
     AddInputOptionST("SAVE_LOADED_PROFILE_F", "$SMGSaveMorphProfileF", "")
     AddEmptyOption()
@@ -927,19 +957,22 @@ Event OnOptionMenuAccept(int a_option, int a_index)
       String[] MorphStruct = Layers[CurrentLayerIndex].DecodeStruct(Layers[CurrentLayerIndex].STRUCT_MorphInfo[morph_idx])
       Bool is_enabled = (MorphStruct[1] as Int) as Bool
       If !is_enabled
-        RemoveMorph(PlayerRef, MorphStruct[0], MorphStruct[3])
+        RemoveMorphs(MorphStruct[0], MorphStruct[3])
+        ;RemoveMorph(PlayerRef, MorphStruct[0], MorphStruct[3])
       EndIf
       Layers[CurrentLayerIndex].SetMorphVar(morph_idx, 1, ((!is_enabled) as Int) as String)
       ForcePageReset()
     ElseIf a_index == 1 ;Delete Morph
       String[] MorphStruct = Layers[CurrentLayerIndex].DecodeStruct(Layers[CurrentLayerIndex].STRUCT_MorphInfo[morph_idx])
-      RemoveMorph(PlayerRef, MorphStruct[0], MorphStruct[3])
+      RemoveMorphs(MorphStruct[0], MorphStruct[3])
+      ;RemoveMorph(PlayerRef, MorphStruct[0], MorphStruct[3])
       Layers[CurrentLayerIndex].DeleteMorph(morph_idx)
       ForcePageReset()
     EndIf
   ElseIf option_type == "sex"
     String[] MorphStruct = Layers[CurrentLayerIndex].DecodeStruct(Layers[CurrentLayerIndex].STRUCT_MorphInfo[morph_idx])
-     RemoveMorph(PlayerRef, MorphStruct[0], MorphStruct[3])
+    RemoveMorphs(MorphStruct[0], MorphStruct[3])
+    ;RemoveMorph(PlayerRef, MorphStruct[0], MorphStruct[3])
     If a_index == 0
       Layers[CurrentLayerIndex].SetMorphVar(morph_idx, 2, "$SMGMale")
     ElseIf a_index == 1
@@ -948,7 +981,8 @@ Event OnOptionMenuAccept(int a_option, int a_index)
     ForcePageReset()
   ElseIf option_type == "type"
     String[] MorphStruct = Layers[CurrentLayerIndex].DecodeStruct(Layers[CurrentLayerIndex].STRUCT_MorphInfo[morph_idx])
-    RemoveMorph(PlayerRef, MorphStruct[0], MorphStruct[3])
+    RemoveMorphs(MorphStruct[0], MorphStruct[3])
+    ;RemoveMorph(PlayerRef, MorphStruct[0], MorphStruct[3])
     If a_index == 0
       Layers[CurrentLayerIndex].SetMorphVar(morph_idx, 3, "$SMGBodyMorphs")
       SetMenuOptionValue(a_option, "$SMGBodyMorphs")

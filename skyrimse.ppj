@@ -1,0 +1,19 @@
+<?xml version='1.0'?><!-- Game is either sse, tesv, or fo4 -->
+<PapyrusProject xmlns="PapyrusProject.xsd" 
+    Flags="TESV_Papyrus_Flags.flg" 
+    Game="sse" 
+    Output="Scripts" 
+    Optimize="false" 
+    Release="false" 
+    Final="false">
+    <Imports>
+        <Import>D:\Library\MO2\SkyrimSpecialEdition\Mod Organizer 2\mods\Creation Kit Scripts\Scripts\Source</Import>
+        <Import>D:\Library\MO2\SkyrimSpecialEdition\Mod Organizer 2\mods\SkyUI_5.1_SDK\Scripts\Source</Import>
+        <Import>D:\Library\MO2\SkyrimSpecialEdition\Mod Organizer 2\mods\RaceMenu Extracted\scripts\source</Import>
+        <Import>D:\Library\MO2\SkyrimSpecialEdition\Mod Organizer 2\mods\PapyrusUtil SE - Modders Scripting Utility Functions\Scripts\Source</Import>
+        <Import>D:\Library\MO2\SkyrimSpecialEdition\Mod Organizer 2\mods\powerofthree's Papyrus Extender\scripts\source</Import>
+    </Imports>
+    <Folders>
+        <Folder>D:\Library\MO2\SkyrimSpecialEdition\Mod Organizer 2\mods\Skyrim-Muscle-Growth-main\scripts\source</Folder>
+    </Folders>
+</PapyrusProject>

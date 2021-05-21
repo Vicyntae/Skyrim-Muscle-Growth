@@ -102,7 +102,9 @@ Float Function CalculateStat(Actor TargetActor)
     EndIf
     i += 1
   EndWhile
-  PlayerLastValue = FinalStat
+  If (TargetActor == MCM.PlayerRef)
+    PlayerLastValue = FinalStat
+  EndIf
   Return FinalStat
 EndFunction
 
