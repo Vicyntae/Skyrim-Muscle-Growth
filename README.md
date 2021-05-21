@@ -4,11 +4,15 @@ Mod allowing one to track stats on the player and edit the player visually in re
 
 Skyrim Special Edition only for now.
 
+NOTE: Need to update layers to store actor-specific configurations
+
 ## Requirements
 - [SKSE64](https://skse.silverlock.org)
 - [SkyUI](https://www.nexusmods.com/skyrimspecialedition/mods/12604)
 - [Racemenu](https://www.nexusmods.com/skyrimspecialedition/mods/19080)
 - [PapyrusUtil](https://www.nexusmods.com/skyrimspecialedition/mods/13048)
+- [Spell Perk Item Distributor](https://www.nexusmods.com/skyrimspecialedition/mods/36869)
+- [PowerOfThree's Papyrus Extender](https://www.nexusmods.com/skyrimspecialedition/mods/22854)
 
 ## Morphs
 1. Go to Actions Page
