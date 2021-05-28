@@ -29,11 +29,10 @@ Float Property BaseStatCeiling = 500.0 Auto
 Int Property LevelCeiling = 75 Auto
 
 Float Property PlayerLastValue = 0.0 Auto
-Actor CurrentTarget
 Float AlphaRatePerMinute = 0.05
 Float PreviousAlpha = 0.0
 
-Event OnInit()
+;/ Event OnInit()
   STRUCT_SkillInfo = New String[22]
 
   SetSkillVars(0, "OneHanded", 0.0, "$SMGSkillOneHanded")
@@ -58,31 +57,295 @@ Event OnInit()
   SetSkillVars(19, "Stamina", 0.0, "$SMGSkillStamina")
   SetSkillVars(20, "Magicka", 0.0, "$SMGSkillMagicka")
   SetSkillVars(21, "Level", 0.0, "$SMGSkillLevel")
-EndEvent
+EndEvent /;
+
+;Debug.Notification("Updating player morphs.")
+Int Sex
+String SexString
+String[] BodyMorphStringCache
+Float[] BodyMorphValueCache
+Float[] BodyMorphStartingCache
+
+String[] BoneMorphStringCache
+Float[] BoneMorphValueCache
+Float[] BoneMorphStartingCache
+
+String[] SpecialMorphStringCache
+Float[] SpecialMorphValueCache
+Float[] SpecialMorphStartingCache
+
 ;*******************************************************************************
 ;Functions
 ;*******************************************************************************
+Actor Property MorphActor Auto
+
+Function StartMorph(Actor TargetActor)
+  MorphActor = TargetActor
+  Sex = TargetActor.GetLeveledActorBase().GetSex()
+  If Sex == 0
+    SexString = "$SMGMale"
+  ElseIf Sex == 1
+    SexString = "$SMGFemale"
+  EndIf
+  
+  CheckSkills()
+  ;Debug.Notification("Starting Morph for " + MorphActor.GetLeveledActorBase().GetName() + " Body morphs = " + BodyMorphStringCache)
+  RegisterForSingleUpdateGameTime(1.0/60.0)
+EndFunction
+
+Event OnUpdateGameTime()
+  If Sex != MorphActor.GetLeveledActorBase().GetSex()
+    nioverride.ClearBodyMorphKeys(MorphActor, "SkyrimMuscleGrowth.esp")
+    CheckSkills()
+  EndIf
+  PreviousAlpha += AlphaRatePerMinute
+  ;Debug.Notification("Updating morphs for " + MorphActor.GetLeveledActorBase().GetName() + ", Alpha = " + PreviousAlpha)
+
+  Bool stop = false
+
+  If PreviousAlpha > 1
+    PreviousAlpha = 1
+    stop = true
+  Else
+    RegisterForSingleUpdateGameTime(1.0/60.0)
+  EndIf
+
+  ApplyBodyMorphs(MorphActor, BodyMorphStringCache, BodyMorphValueCache, PreviousAlpha, BodyMorphStartingCache)
+  ApplyBoneMorphs(MorphActor, BoneMorphStringCache, BoneMorphValueCache, PreviousAlpha, BoneMorphStartingCache)
+  ApplySpecialMorphs(MorphActor, SpecialMorphStringCache, SpecialMorphValueCache, PreviousAlpha, SpecialMorphStartingCache)
+
+  If stop
+    ;Debug.Notification("Morphing finished")
+    MorphActor = None
+  EndIf
+
+
+;/   If PlayerLastValue > PreviousAlpha
+    PreviousAlpha += AlphaRatePerMinute
+    If PreviousAlpha > PlayerLastValue
+      PreviousAlpha = PlayerLastValue
+    EndIf
+    UpdateActorMorphs(CurrentTarget, PreviousAlpha)
+    RegisterForSingleUpdateGameTime(1.0/60.0)
+  ElseIf PlayerLastValue < PreviousAlpha
+    PreviousAlpha -= AlphaRatePerMinute
+    If PreviousAlpha < PlayerLastValue
+      PreviousAlpha = PlayerLastValue
+    EndIf
+    UpdateActorMorphs(CurrentTarget, PreviousAlpha)
+    RegisterForSingleUpdateGameTime(1.0/60.0)
+  EndIf /;
+EndEvent
+
+Function ApplyBodyMorphs(Actor TargetActor, String[] MorphStrings, Float[] MorphValues, Float AlphaValue, Float[] StartValues)
+  ;Debug.Notification("Morphing " + TargetActor.GetLeveledActorBase().GetName())
+  Int i = 0
+  Int IsFemale = TargetActor.GetLeveledActorBase().GetSex()
+  While i < MorphStrings.Length
+    String MorphString = MorphStrings[i]
+    If MorphString
+      ;Debug.Notification("Morph = " + MorphString + ", Final value = " + MorphValues[i] + ", Alpha = " + AlphaValue + "Start = " + StartValues[i])
+      Float Interp = InterpolateValue(AlphaValue, StartValues[i], MorphValues[i], 0)
+      NiOverride.SetBodyMorph(TargetActor, MorphString, "SkyrimMuscleGrowth.esp", Interp)
+    EndIf
+    i += 1
+  EndWhile
+  TargetActor.QueueNiNodeUpdate()
+  NiOverride.UpdateModelWeight(TargetActor)
+EndFunction
+
+Function ApplyBoneMorphs(Actor TargetActor, String[] MorphStrings, Float[] MorphValues, Float AlphaValue, Float[] StartValues)
+  Int i = 0
+  Int IsFemale = TargetActor.GetActorBase().GetSex()
+  While i < MorphStrings.Length
+    String MorphString = MorphStrings[i]
+    If MorphString
+      Float Interp = InterpolateValue(AlphaValue, StartValues[i], MorphValues[i], 0)
+      NiOverride.AddNodeTransformScale(TargetActor, False, IsFemale, MorphString, "SkyrimMuscleGrowth.esp", Interp)
+      NiOverride.AddNodeTransformScale(TargetActor, True, IsFemale, MorphString, "SkyrimMuscleGrowth.esp", Interp)
+      NiOverride.UpdateNodeTransform(TargetActor, False, IsFemale, MorphString)
+      NiOverride.UpdateNodeTransform(TargetActor, True, IsFemale, MorphString)
+    EndIf
+    i += 1
+  EndWhile
+  
+  TargetActor.QueueNiNodeUpdate()
+  NiOverride.UpdateModelWeight(TargetActor)
+EndFunction
+
+Function ApplySpecialMorphs(Actor TargetActor, String[] MorphStrings, Float[] MorphValues, Float AlphaValue, Float[] StartValues)
+  ;Debug.Notification("Applying Body Morphs. Length == " + MorphStrings.Length)
+  Int i = 0
+  Int IsFemale = TargetActor.GetActorBase().GetSex()
+  While i < MorphStrings.Length
+    String MorphString = MorphStrings[i]
+    If MorphString
+      Float Interp = InterpolateValue(AlphaValue, StartValues[i], MorphValues[i], 0)
+      If MorphString == "Weight"
+        If TargetActor == Game.GetPlayer()
+          Interp = PapyrusUtil.ClampFloat(Interp, 0, 1)
+          Interp *= 100
+          TargetActor.GetActorBase().SetWeight(Interp)
+          TargetActor.UpdateWeight(0.0)
+        EndIf
+      ElseIf MorphString == "Height"
+        If Interp <= 0
+          Interp = 0.01
+        EndIf
+        ;Debug.Notification("Height == " + MorphValue)
+        ;Debug.Notification("Updating Height, value = " + InterpValue)
+        NiOverride.AddNodeTransformScale(TargetActor, false, IsFemale, "NPC Root [Root]", "SkyrimMuscleGrowth.esp", Interp)
+        NiOverride.AddNodeTransformScale(TargetActor, True, IsFemale, "NPC Root [Root]", "SkyrimMuscleGrowth.esp", Interp)
+        NiOverride.UpdateNodeTransform(TargetActor, False, IsFemale, "NPC Root [Root]")
+        NiOverride.UpdateNodeTransform(TargetActor, True, IsFemale, "NPC Root [Root]")
+      EndIf
+    EndIf
+    i += 1
+  EndWhile
+  TargetActor.QueueNiNodeUpdate()
+  NiOverride.UpdateModelWeight(TargetActor)
+EndFunction
+
+String[] Function MergeMorphLayers(Actor TargetActor)
+  String[] a = PapyrusUtil.MergeStringArray(MCM.GetMorphLayers(None), MCM.GetMorphLayers(TargetActor.GetLeveledActorBase()))
+  Debug.Notification("Merge Morphs: " + a)
+  Int[] s = FilterMorphs(a, False, "", True, SexString)
+  Int i = 0
+  String[] b = Utility.CreateStringArray(s.Length)
+  While i < s.Length
+    b[i] = a[s[i]]
+    ;a = RemoveFromStringArray(a, s[i])
+    i += 1
+  EndWhile
+  Debug.Notification("b = " + b.Length)
+  Return b
+EndFunction
+
+String[] Function MergeSkillLayers(Actor TargetActor)
+  String[] a = PapyrusUtil.MergeStringArray(MCM.GetSkillLayers(None), MCM.GetSkillLayers(TargetActor.GetLeveledActorBase()))
+  Return a
+EndFunction
+
+Function CheckSkills()
+  BodyMorphStringCache = Utility.CreateStringArray(0)
+  BodyMorphValueCache = Utility.CreateFloatArray(0)
+  BodyMorphStartingCache = Utility.CreateFloatArray(0)
+
+  BoneMorphStringCache = Utility.CreateStringArray(0)
+  BoneMorphValueCache = Utility.CreateFloatArray(0)
+  BoneMorphStartingCache = Utility.CreateFloatArray(0)
+
+  SpecialMorphStringCache = Utility.CreateStringArray(0)
+  SpecialMorphValueCache = Utility.CreateFloatArray(0)
+  SpecialMorphStartingCache = Utility.CreateFloatArray(0)
+
+;/   BodyMorphStringCache = New String[1]
+  BodyMorphValueCache = New Float[1]
+  BodyMorphStartingCache = New Float[1]
+
+  BoneMorphStringCache = New String[1]
+  BoneMorphValueCache = New Float[1]
+  BoneMorphStartingCache = New Float[1]
+
+  SpecialMorphStringCache = New String[1]
+  SpecialMorphValueCache = New Float[1]
+  SpecialMorphStartingCache = New Float[1] /;
+
+  ;String[] morph_layers = MergeMorphLayers(MorphActor)
+  ;String[] FullMorphLayerList = MergeMorphLayers(MorphActor)
+  ;Debug.Notification("Full Layer Morph List: " + morph_layers.Length)
+  ;String[] FullSkillLayerList = MergeSkillLayers(MorphActor)
+  
+  ApplyLayers(MCM.GetMorphLayers(None), MCM.GetSkillLayers(None))
+  ApplyLayers(MCM.GetMorphLayers(MorphActor.GetLeveledActorBase()), MCM.GetSkillLayers(MorphActor.GetLeveledActorBase()))
+  
+  PreviousAlpha = 0.0
+
+EndFunction
+
+Function ApplyLayers(String[] morph_layers, String[] skill_layers)
+  Int i = 0
+  
+  Int NumLayers = morph_layers.Length
+  While i < NumLayers
+    String[] SkillLayer = MCM.DecodeLayer(skill_layers[i])
+    Float LayerValue = CalculateStat(MorphActor, SkillLayer)
+
+    String[] MorphLayer = MCM.DecodeLayer(morph_layers[i])
+    
+
+    Int[] FilteredMorphs = FilterMorphs(MorphLayer, False, "", True, SexString)
+    Int j = 0
+    Int numMorphs = FilteredMorphs.Length
+    While j < numMorphs
+      String[] MorphStruct = MCM.DecodeStruct(MorphLayer[FilteredMorphs[j]])
+      If (MorphStruct[1] as Int) as Bool
+        String MorphType = MorphStruct[3]
+        Float InterpValue = InterpolateValue(LayerValue, MorphStruct[4] as Float, MorphStruct[5] as Float, MorphStruct[6] as Int)
+        ;Debug.Notification("Applying Morph " + MorphStruct[0] + ", Value == " + InterpValue)
+        If MorphType == "$SMGBodyMorphs"
+          Int FoundIndex = BodyMorphStringCache.Find(MorphStruct[0])
+          If FoundIndex >= 0
+            BodyMorphValueCache[FoundIndex] = BodyMorphValueCache[FoundIndex] + InterpValue
+          Else
+            BodyMorphStringCache = PapyrusUtil.PushString(BodyMorphStringCache, MorphStruct[0])
+            BodyMorphValueCache = PapyrusUtil.PushFloat(BodyMorphValueCache, InterpValue)
+            BodyMorphStartingCache = PapyrusUtil.PushFloat(BodyMorphStartingCache, nioverride.GetBodyMorph(MorphActor, MorphStruct[0], "SkyrimMuscleGrowth.esp"))
+          EndIf
+        ElseIf MorphType =="$SMGBoneScaleMorphs"
+          Int FoundIndex = BoneMorphStringCache.Find(MorphStruct[0])
+          If FoundIndex >= 0
+            BoneMorphValueCache[FoundIndex] = BoneMorphValueCache[FoundIndex] + InterpValue
+          Else
+            BoneMorphStringCache = PapyrusUtil.PushString(BoneMorphStringCache, MorphStruct[0])
+            BoneMorphValueCache = PapyrusUtil.PushFloat(BoneMorphValueCache, InterpValue)
+            BoneMorphStartingCache = PapyrusUtil.PushFloat(BoneMorphStartingCache, nioverride.GetNodeTransformScale(MorphActor, false, Sex, MorphStruct[0], "SkyrimMuscleGrowth.esp"))
+
+          EndIf
+        ElseIf MorphType == "$SMGSpecialMorphs"
+          If MorphStruct[0] != "Weight" || MorphActor == MCM.PlayerRef 
+            Int FoundIndex = SpecialMorphStringCache.Find(MorphStruct[0])
+            If FoundIndex >= 0
+              SpecialMorphValueCache[FoundIndex] = SpecialMorphValueCache[FoundIndex] + InterpValue
+            Else
+              SpecialMorphStringCache = PapyrusUtil.PushString(SpecialMorphStringCache, MorphStruct[0])
+              SpecialMorphValueCache = PapyrusUtil.PushFloat(SpecialMorphValueCache, InterpValue)
+              If MorphStruct[0] == "Weight"
+                SpecialMorphStartingCache = PapyrusUtil.PushFloat(SpecialMorphStartingCache, MorphActor.GetLeveledActorBase().GetWeight())
+              ElseIf MorphStruct[0] == "Height"
+                SpecialMorphStartingCache = PapyrusUtil.PushFloat(SpecialMorphStartingCache, nioverride.GetNodeTransformScale(MorphActor, false, Sex, "NPC Root [Root]", "SkyrimMuscleGrowth.esp"))
+              EndIf
+            EndIf
+          EndIf
+        EndIf
+      EndIf
+      j += 1
+    EndWhile
+    i += 1
+  EndWhile
+EndFunction
+
 Float Function SumStructValues(String[] StructArray, Int Index)
   ;Sums all values in a struct array at a give Struct Index
   Int i = 0
   Int numStructs = StructArray.Length
   Float Sum = 0
   While i < numStructs
-    String[] Struct = DecodeStruct(StructArray[i])
+    String[] Struct = MCM.DecodeStruct(StructArray[i])
     Sum += Struct[1] as Float
     i += 1
   EndWhile
   Return Sum
 EndFunction
 
-Float Function CalculateStat(Actor TargetActor)
+Float Function CalculateStat(Actor TargetActor, String[] SkillLayer)
   ;(Weight / SumOfWeights) * (Value / MaxValue)
-  Int numStats = STRUCT_SkillInfo.Length
+  Int numStats = SkillLayer.Length
   Float FinalStat = 0
-  Float SkillSum = SumStructValues(STRUCT_SkillInfo, 1)
+  Float SkillSum = SumStructValues(SkillLayer, 1)
   Int i = 0
   While i < numStats
-    String[] SkillStruct = DecodeStruct(STRUCT_SkillInfo[i])
+    String[] SkillStruct = MCM.DecodeStruct(SkillLayer[i])
     String ActorValueString = SkillStruct[0]
     Float weight = SkillStruct[1] as Float
     If weight != 0
@@ -233,42 +496,14 @@ Float Function InterpolateValue(Float Alpha, Float a, Float b, Int Method)
   EndIf
 EndFunction
 
-String Function EncodeArray(String[] StructArray, String Delimiter = "_")
-  Return PapyrusUtil.StringJoin(StructArray, Delimiter)
-EndFunction
 
-Bool Function AddMorph(String MorphString, Bool Enabled, String MorphSex, String MorphType, Float MorphMin = 0.0, Float MorphMax = 1.0, Int MorphInterp = 0)
-  If STRUCT_MorphInfo.Length > 128
-    Return False
-  EndIf
-  String[] StructArray = New String[7]
-  StructArray[0] = MorphString
-  StructArray[1] = (Enabled as Int) as String
-  StructArray[2] = MorphSex
-  StructArray[3] = MorphType
-  StructArray[4] = MorphMin as String
-  StructArray[5] = MorphMax as String
-  StructArray[6] = MorphInterp as String
-  STRUCT_MorphInfo = PapyrusUtil.PushString(STRUCT_MorphInfo, EncodeArray(StructArray))
-  Return True
-EndFunction
-
-String[] Function DecodeStruct(String Struct)
-  Return StringUtil.Split(Struct, "_")
-EndFunction
-
-String[] Function GetMorphStructIdx(Int index)
-  String EncodedStruct = STRUCT_MorphInfo[index]
-  Return DecodeStruct(EncodedStruct)
-EndFunction
-
-Int[] Function FilterMorphs(Bool FilterMorphType, String MorphType, Bool FilterSex, String MorphSex)
+Int[] Function FilterMorphs(String[] LayerMorphs, Bool FilterMorphType, String MorphType, Bool FilterSex, String MorphSex)
   Int i = 0
-  Int numMorphs = STRUCT_MorphInfo.length
+  Int numMorphs = LayerMorphs.Length
   Int j = 0
   Int[] ReturnArray = Utility.CreateIntArray(128, -1)
   While i < numMorphs
-    String[] MorphStruct = DecodeStruct(STRUCT_MorphInfo[i])
+    String[] MorphStruct = MCM.DecodeStruct(LayerMorphs[i])
     Bool TypeSuccess = False
     If !FilterMorphType || MorphStruct[3] == MorphType
       TypeSuccess = True
@@ -285,110 +520,6 @@ Int[] Function FilterMorphs(Bool FilterMorphType, String MorphType, Bool FilterS
   EndWhile
   ;MCM.ShowMessage("Num Filtered Option = " + ReturnArray.Length, False, "OK", "")
   Return PapyrusUtil.RemoveInt(ReturnArray, -1)
-EndFunction
-
-Int Function GetMorphIndex(String MorphString, String MorphType, String MorphSex)
-  Int i = 0
-  Int numMorphs = STRUCT_MorphInfo.length
-  While i < numMorphs
-    String[] MorphStruct = DecodeStruct(STRUCT_MorphInfo[i])
-    If MorphStruct[3] == MorphType
-      If MorphStruct[2] == MorphSex
-        If MorphStruct[0] == MorphString
-          Return i
-        EndIf
-      EndIf
-    EndIf
-    i += 1
-  EndWhile
-  Return -1
-EndFunction
-
-String[] Function GetMorphStructString(String MorphString, String MorphType, String MorphSex)
-  Int Index = GetMorphIndex(MorphString, MorphType, MorphSex)
-  If Index < 0
-    Return New String[1]
-  EndIf
-  Return GetMorphStructIdx(Index)
-EndFunction
-
-Function SetMorphVar(Int ArrayIndex, Int StructIndex, String Value)
-  If ArrayIndex > STRUCT_MorphInfo.Length - 1
-    STRUCT_MorphInfo = PapyrusUtil.ResizeStringArray(STRUCT_MorphInfo, ArrayIndex + 1, "")
-  EndIf
-  String[] MorphStruct = DecodeStruct(STRUCT_MorphInfo[ArrayIndex])
-  If MorphStruct.Length != 7
-    MorphStruct = New String[7]
-    MorphStruct[0] = "NONE"
-    MorphStruct[1] = 0
-    MorphStruct[2] = "$SMGMale"
-    MorphStruct[3] = "$SMGSpecialMorphs"
-    MorphStruct[4] = 0.0
-    MorphStruct[5] = 1.0
-    MorphStruct[6] = 0
-  EndIf
-  MorphStruct[StructIndex] = Value
-  STRUCT_MorphInfo[ArrayIndex] = EncodeArray(MorphStruct)
-EndFunction
-
-Function SetMorphVars(Int ArrayIndex, String MorphString, Bool MorphEnabled, String MorphSex, String MorphType, Float MorphMin, Float MorphMax, Int MorphInterp)
-  If ArrayIndex > STRUCT_MorphInfo.Length - 1
-    STRUCT_MorphInfo = PapyrusUtil.ResizeStringArray(STRUCT_MorphInfo, ArrayIndex + 1, "")
-  EndIf
-  String[] MorphStruct = New String[7]
-  MorphStruct[0] = MorphString
-  MorphStruct[1] = (MorphEnabled as Int) as String
-  MorphStruct[2] = MorphSex
-  MorphStruct[3] = MorphType
-  MorphStruct[4] = MorphMin
-  MorphStruct[5] = MorphMax
-  MorphStruct[6] = MorphInterp
-  STRUCT_MorphInfo[ArrayIndex] = EncodeArray(MorphStruct)
-EndFunction
-
-Function SetSkillVar(Int ArrayIndex, Int StructIndex, String Value)
-  If ArrayIndex > STRUCT_SkillInfo.Length - 1
-    STRUCT_SkillInfo = PapyrusUtil.ResizeStringArray(STRUCT_SkillInfo, ArrayIndex + 1, "")
-  EndIf
-  String[] SkillStruct = DecodeStruct(STRUCT_SkillInfo[ArrayIndex])
-  If SkillStruct.Length != 3
-    SkillStruct = New String[3]
-    SkillStruct[0] = "NONE"
-    SkillStruct[1] = 0.0
-    SkillStruct[2] = "NONE"
-  EndIf
-  SkillStruct[StructIndex] = Value
-  STRUCT_SkillInfo[ArrayIndex] = EncodeArray(SkillStruct)
-EndFunction
-
-Function SetSkillVars(Int ArrayIndex, String SkillString, Float SkillWeight, String SkillDisplayName)
-  If ArrayIndex > STRUCT_SkillInfo.Length - 1
-    STRUCT_SkillInfo = PapyrusUtil.ResizeStringArray(STRUCT_SkillInfo, ArrayIndex + 1, "")
-  EndIf
-  String[] SkillStruct = New String[3]
-  SkillStruct[0] = SkillString
-  SkillStruct[1] = SkillWeight
-  SkillStruct[2] = SkillDisplayName
-  STRUCT_SkillInfo[ArrayIndex] = EncodeArray(SkillStruct)
-EndFunction
-
-Function DeleteMorph(Int Index)
-	String[] MorphStruct = DecodeStruct(STRUCT_MorphInfo[Index])
-	String MorphType = MorphStruct[3]
-	Actor Player = MCM.PlayerRef
-	Int IsFemale = Player.GetActorBase().GetSex()
-	If MorphType == "$SMGSpecialMorphs"
-		If MorphStruct[0] == "Weight"
-	        Player.GetActorBase().SetWeight(0)
-	        Player.UpdateWeight(0.0)
-        ElseIf MorphStruct[0] == "Height"
-          NiOverride.RemoveNodeTransformScale(Player, false, IsFemale, "NPC Root [Root]", "SkyrimMuscleGrowth.esp")
-          NiOverride.RemoveNodeTransformScale(Player, True, IsFemale, "NPC Root [Root]", "SkyrimMuscleGrowth.esp")
-          NiOverride.UpdateNodeTransform(Player, False, IsFemale, "NPC Root [Root]")
-          NiOverride.UpdateNodeTransform(Player, True, IsFemale, "NPC Root [Root]")
-		EndIf
-	EndIf
-	STRUCT_MorphInfo = RemoveFromStringArray(STRUCT_MorphInfo, Index)
 EndFunction
 
 String[] Function RemoveFromStringArray(String[] TargetArray, Int Index)

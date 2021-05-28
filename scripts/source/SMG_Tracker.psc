@@ -10,7 +10,6 @@ Event OnEffectStart(Actor akTarget, Actor akCaster)
     PO3_Events_AME.RegisterForSkillIncrease(self)
     PO3_Events_AME.RegisterForLevelIncrease(self)
     RegisterForModEvent("SMG_AllActorsUpdated", "OnAllActorsUpdated")
-    RegisterForModEvent("SMG_MorphRemoved", "OnMorphRemoved")
     SMG.AddTrackedActor(Target)
 EndEvent
 
@@ -34,7 +33,3 @@ EndEvent
 Event OnLevelIncrease(int aiLevel)
     SMG.UpdateAllLayerMorphs(Target)
 EndEvent
-
-Function OnMorphRemoved(String MorphString, String MorphType)
-    SMG.RemoveMorph(Target, MorphString, MorphType)
-  EndFunction
